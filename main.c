@@ -1,92 +1,98 @@
-// main.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <fcntl.h>
-#include <sys/mman.h>
 #include <semaphore.h>
+#include <fcntl.h>
 
-#define SHM_NAME "/image_shm"
 #define SEM_READY "/sem_ready"
 #define SEM_BLUR_DONE "/sem_blur_done"
-#define SEM_EDGE_DONE "/sem_edge_done"
+#define SEM_ENHANCE_DONE "/sem_enhance_done"
 
 int main(int argc, char *argv[]) {
-    if (argc != 4) {
-        fprintf(stderr, "Uso: %s <ruta_entrada> <ruta_salida> <num_hilos>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Uso: %s <ruta_entrada> <ruta_salida>\n", argv[0]);
         return 1;
     }
 
     char *input_path = argv[1];
     char *output_path = argv[2];
-    char *num_threads = argv[3];
 
-    // Crear memoria compartida y semáforos
-    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    // Ajustar tamaño de la memoria compartida según el tamaño de la imagen
-
+    // Crear semáforos
     sem_t *sem_ready = sem_open(SEM_READY, O_CREAT, 0666, 0);
+    if (sem_ready == SEM_FAILED) {
+        perror("Main: sem_open");
+        return 1;
+    }
     sem_t *sem_blur_done = sem_open(SEM_BLUR_DONE, O_CREAT, 0666, 0);
-    sem_t *sem_edge_done = sem_open(SEM_EDGE_DONE, O_CREAT, 0666, 0);
-
-    // Lanzar Publicador
-    pid_t pub_pid = fork();
-    if (pub_pid == 0) {
-        execlp("./publicador", "publicador", input_path, NULL);
-        perror("Error al ejecutar publicador");
-        exit(1);
+    if (sem_blur_done == SEM_FAILED) {
+        perror("Main: sem_open");
+        sem_close(sem_ready);
+        return 1;
+    }
+    sem_t *sem_enhance_done = sem_open(SEM_ENHANCE_DONE, O_CREAT, 0666, 0);
+    if (sem_enhance_done == SEM_FAILED) {
+        perror("Main: sem_open");
+        sem_close(sem_ready);
+        sem_close(sem_blur_done);
+        return 1;
     }
 
-    // Esperar a que el Publicador cargue la imagen
-    sem_wait(sem_ready);
     printf("Main: Esperando Publicador\n");
 
-    // Lanzar Desenfocador
-    pid_t blur_pid = fork();
-    if (blur_pid == 0) {
-        execlp("./desenfocador", "desenfocador", num_threads, NULL);
-        perror("Error al ejecutar desenfocador");
-        exit(1);
+    // Lanzar el proceso publicador
+    pid_t pub_pid = fork();
+    if (pub_pid == 0) {
+        execl("./publicador", "publicador", input_path, NULL);
+        perror("Main: execl");
+        return 1;
     }
 
-    // Lanzar Realzador
-    pid_t edge_pid = fork();
-    if (edge_pid == 0) {
-        execlp("./realzador", "realzador", NULL);
-        perror("Error al ejecutar realzador");
-        exit(1);
-    }
-
-    // Esperar a que terminen Desenfocador y Realzador
-    sem_wait(sem_blur_done);
-    printf("Main: Esperando Desenfocador\n");
-    sem_wait(sem_edge_done);
-    printf("Main: Esperando Realzador\n");
-
-    // Lanzar Combinador
-    pid_t comb_pid = fork();
-    if (comb_pid == 0) {
-        execlp("./combinador", "combinador", output_path, NULL);
-        perror("Error al ejecutar combinador");
-        exit(1);
-    }
-
-    // Esperar a que todos los procesos hijos terminen
-    waitpid(pub_pid, NULL, 0);
-    waitpid(blur_pid, NULL, 0);
-    waitpid(edge_pid, NULL, 0);
-    waitpid(comb_pid, NULL, 0);
-
-    // Limpiar recursos
+    sem_wait(sem_ready);
     sem_close(sem_ready);
+
+    printf("Main: Publicador completado, iniciando Desenfocador\n");
+
+    pid_t pid_blur = fork();
+    if (pid_blur == 0) {
+        execl("./desenfocador", "desenfocador", output_path, NULL);
+        perror("Main: execl");
+        return 1;
+    }
+
+    sem_wait(sem_blur_done);
     sem_close(sem_blur_done);
-    sem_close(sem_edge_done);
+
+    printf("Main: Desenfocador completado, iniciando Realzador\n");
+
+    pid_t pid_enhance = fork();
+    if (pid_enhance == 0) {
+        execl("./realzador", "realzador", output_path, NULL);
+        perror("Main: execl");
+        return 1;
+    }
+
+    sem_wait(sem_enhance_done);
+    sem_close(sem_enhance_done);
+
+    printf("Main: Realzador completado, iniciando Combinador\n");
+
+    pid_t pid_combine = fork();
+    if (pid_combine == 0) {
+        execl("./combinador", "combinador", output_path, NULL);
+        perror("Main: execl");
+        return 1;
+    }
+
+    // Esperar a que el proceso combinador termine
+    waitpid(pid_combine, NULL, 0);
+
+    // Aquí se combinarían las dos porciones procesadas de la imagen
+    // y se guardaría la imagen final en disco
     sem_unlink(SEM_READY);
     sem_unlink(SEM_BLUR_DONE);
-    sem_unlink(SEM_EDGE_DONE);
-    shm_unlink(SHM_NAME);
+    sem_unlink(SEM_ENHANCE_DONE);
 
-    printf("Main: Procesamiento de imagen completado.\n");
+    printf("Main: Tarea completada.\n");
     return 0;
 }

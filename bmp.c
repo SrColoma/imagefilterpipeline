@@ -1,135 +1,169 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include "bmp.h"
 
+/* Función para imprimir mensajes de error */
 void printError(int error){
   switch(error){
-  case ARGUMENT_ERROR:
-    printf("Usage:ex5 <source> <destination>\n");
-    break;
-  case FILE_ERROR:
-    printf("Unable to open file!\n");
-    break;
-  case MEMORY_ERROR:
-    printf("Unable to allocate memory!\n");
-    break;
-  case VALID_ERROR:
-    printf("BMP file not valid!\n");
-    break;
-  default:
-    break;
+    case ARGUMENT_ERROR:
+      printf("Usage:ex5 <source> <destination>\n");
+      break;
+    case FILE_ERROR:
+      printf("Unable to open file!\n");
+      break;
+    case MEMORY_ERROR:
+      printf("Unable to allocate memory!\n");
+      break;
+    case VALID_ERROR:
+      printf("BMP file not valid!\n");
+      break;
+    default:
+      break;
   }
 }
 
-BMP_Image* createBMPImage(FILE *file) {
-    printf("createBMPImage: Inicio de la función\n");
-    BMP_Image *image = (BMP_Image *)malloc(sizeof(BMP_Image));
+BMP_Image* createBMPImage(FILE* fptr) {
+    // Asignar memoria para BMP_Image
+    BMP_Image* image = (BMP_Image*)malloc(sizeof(BMP_Image));
     if (image == NULL) {
-        printf("createBMPImage: Error al asignar memoria para BMP_Image\n");
+        printError(MEMORY_ERROR);
         return NULL;
     }
-    printf("createBMPImage: Memoria asignada para BMP_Image\n");
-    // Aquí se debería inicializar la estructura BMP_Image
-    // Leer el encabezado BMP
-    printf("createBMPImage: Intentando leer el encabezado BMP\n");
-    size_t read_size = fread(&(image->header), sizeof(BMP_Header), 1, file);
-    if (read_size != 1) {
-        printf("createBMPImage: Error al leer el encabezado BMP\n");
-        free(image);
-        return NULL;
-    }
-    printf("createBMPImage: Encabezado BMP leído\n");
 
-    // Validar el encabezado BMP
-    if (!checkBMPValid(&(image->header))) {
+    // Leer los primeros 54 bytes del archivo fuente en el header
+    if (fread(&image->header, sizeof(BMP_Header), 1, fptr) != 1) {
         free(image);
+        printError(FILE_ERROR);
         return NULL;
     }
-    
-    // Calcular el tamaño de la imagen y asignar memoria para los píxeles
-    image->norm_height = abs(image->header.height_px);
-    image->bytes_per_pixel = image->header.bits_per_pixel / 8;
-    int dataSize = image->norm_height * image->header.width_px * image->bytes_per_pixel;
-    image->pixels = (Pixel **)malloc(image->norm_height * sizeof(Pixel *));
+
+    // Imprimir información del encabezado BMP para depuración
+    printBMPHeader(&image->header);
+
+    // Verificar si el archivo BMP es válido
+    if (!checkBMPValid(&image->header)) {
+        free(image);
+        printError(VALID_ERROR);
+        return NULL;
+    }
+
+    // Calcular el ancho, alto y bytes por pixel
+    int width = image->header.width_px;
+    int height = abs(image->header.height_px);
+    int bytes_per_pixel = image->header.bits_per_pixel / 8;
+
+    image->norm_height = height;
+    image->bytes_per_pixel = bytes_per_pixel;
+
+    // Asignar memoria para los datos de la imagen
+    image->pixels = (Pixel**)malloc(height * sizeof(Pixel*));
     if (image->pixels == NULL) {
         free(image);
+        printError(MEMORY_ERROR);
         return NULL;
     }
-    for (int i = 0; i < image->norm_height; i++) {
-        image->pixels[i] = (Pixel *)malloc(image->header.width_px * sizeof(Pixel));
+
+    for (int i = 0; i < height; i++) {
+        image->pixels[i] = (Pixel*)malloc(width * bytes_per_pixel); // Ajustado para 32 bits por píxel
         if (image->pixels[i] == NULL) {
             for (int j = 0; j < i; j++) {
                 free(image->pixels[j]);
             }
             free(image->pixels);
             free(image);
+            printError(MEMORY_ERROR);
             return NULL;
         }
     }
-    // Leer los datos de la imagen
-    readImageData(file, image, dataSize);
+
+    // Leer los datos de la imagen con padding
+    int padding = (4 - (width * bytes_per_pixel) % 4) % 4;
+
+    printf("Leyendo datos de imagen...\n");
+    for (int i = 0; i < height; i++) {
+        if (fread(image->pixels[i], bytes_per_pixel, width, fptr) != width) {
+            for (int j = 0; j < height; j++) {
+                free(image->pixels[j]);
+            }
+            free(image->pixels);
+            free(image);
+            printError(FILE_ERROR);
+            return NULL;
+        }
+        // Saltar el padding
+        fseek(fptr, padding, SEEK_CUR);
+    }
+
     return image;
 }
 
 void readImageData(FILE* srcFile, BMP_Image* image, int dataSize) {
-    fseek(srcFile, image->header.offset, SEEK_SET);
-    
-    int padding = (4 - (image->header.width_px * image->bytes_per_pixel) % 4) % 4;
-    
-    for (int i = 0; i < image->norm_height; i++) {
-        fread(image->pixels[i], sizeof(Pixel), image->header.width_px, srcFile);
-        fseek(srcFile, padding, SEEK_CUR);  // Skip padding
-    }
+    fread(image->pixels[0], sizeof(Pixel), dataSize, srcFile);
 }
 
-void readImage(FILE *srcFile, BMP_Image* dataImage) {
-    dataImage = createBMPImage(srcFile);
-    if (dataImage == NULL) {
-        return;
+BMP_Image* readImage(FILE* srcFile) {
+    printf("Llamando a createBMPImage...\n");
+    BMP_Image* image = createBMPImage(srcFile);
+    if (image == NULL) {
+        printf("Error: createBMPImage devolvió NULL\n");
     }
-    
-    int dataSize = dataImage->norm_height * dataImage->header.width_px * dataImage->bytes_per_pixel;
-    readImageData(srcFile, dataImage, dataSize);
+    return image;
 }
 
 void writeImage(char* destFileName, BMP_Image* dataImage) {
+    
+    printf("Abriendo archivo de salida para escritura: %s\n", destFileName);
     FILE* destFile = fopen(destFileName, "wb");
     if (destFile == NULL) {
         printError(FILE_ERROR);
         return;
     }
 
-    fwrite(&dataImage->header, sizeof(BMP_Header), 1, destFile);
-
-    int padding = (4 - (dataImage->header.width_px * dataImage->bytes_per_pixel) % 4) % 4;
-    uint8_t paddingBytes[3] = {0, 0, 0};
-
-    for (int i = 0; i < dataImage->norm_height; i++) {
-        fwrite(dataImage->pixels[i], sizeof(Pixel), dataImage->header.width_px, destFile);
-        fwrite(paddingBytes, 1, padding, destFile);
+    printf("Escribiendo el encabezado BMP...\n");
+    if (fwrite(&dataImage->header, sizeof(BMP_Header), 1, destFile) != 1) {
+        fclose(destFile);
+        printError(FILE_ERROR);
+        return;
     }
 
+    int width = dataImage->header.width_px;
+    int height = abs(dataImage->header.height_px);
+    int bytes_per_pixel = dataImage->header.bits_per_pixel / 8;
+    int padding = (4 - (width * bytes_per_pixel) % 4) % 4;
+
+    printf("Escribiendo datos de imagen...\n");
+    for (int i = 0; i < height; i++) {
+        if (fwrite(dataImage->pixels[i], bytes_per_pixel, width, destFile) != width) {
+            fclose(destFile);
+            printError(FILE_ERROR);
+            return;
+        }
+        // Escribir el padding
+        uint8_t paddingBytes[3] = {0, 0, 0};
+        if (fwrite(paddingBytes, 1, padding, destFile) != padding) {
+            fclose(destFile);
+            printError(FILE_ERROR);
+            return;
+        }
+    }
+
+    printf("Cerrando archivo de salida...\n");
     fclose(destFile);
 }
 
 void freeImage(BMP_Image* image) {
-    if (image != NULL) {
-        if (image->pixels != NULL) {
-            for (int i = 0; i < image->norm_height; i++) {
-                free(image->pixels[i]);
-            }
-            free(image->pixels);
-        }
-        free(image);
+    for (int i = 0; i < image->norm_height; i++) {
+        free(image->pixels[i]);
     }
+    free(image->pixels);
+    free(image);
 }
 
 int checkBMPValid(BMP_Header* header) {
     if (header->type != 0x4d42) {
         return FALSE;
     }
-    if (header->bits_per_pixel != 24) {
+    if (header->bits_per_pixel != 24 && header->bits_per_pixel != 32) {
         return FALSE;
     }
     if (header->planes != 1) {

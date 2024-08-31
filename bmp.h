@@ -1,7 +1,9 @@
-#include <stdint.h>
-
 #ifndef _BMP_H_
 #define _BMP_H_
+
+#include <stdint.h>
+#include <stdio.h>
+
 #define TRUE 1
 #define FALSE 0
 #define ARGUMENT_ERROR 1
@@ -10,41 +12,25 @@
 #define VALID_ERROR 4
 #define HEADER_SIZE 54
 
-// Set data alignment to 1 byte boundary
-#pragma pack(1)     
-
-/*
- * BMP files are laid out in the following fashion:
- *   --------------------------
- *   |          Header        |   54 bytes
- *   |-------------------------
- *   |    Palette (optional)  |   0 bytes (for 24-bit RGB images)
- *   |-------------------------
- *   |       Image Data       |   file size - 54 (for 24-bit images)
- *   --------------------------
- */
-
-/** 
- * BMP header (54 bytes).
- */
+#pragma pack(1)
 
 typedef struct __attribute__((packed)) BMP_Header {
-    uint16_t type;           // Magic identifier
-    uint32_t size;           // File size in bytes
-    uint16_t reserved1;      // Not used
-    uint16_t reserved2;      // Not used
-    uint32_t offset;         // Offset to image data in bytes
-    uint32_t header_size;    // Header size in bytes
-    int32_t  width_px;       // Width of the image
-    int32_t  height_px;      // Height of image
-    uint16_t planes;                    // Number of color planes
-    uint16_t bits_per_pixel;            // Bits per pixel
-    uint32_t compression;               // Compression type
-    uint32_t imagesize;                 // Image size in bytes
-    int32_t  xresolution;               // Pixels per meter
-    int32_t  yresolution;               // Pixels per meter
-    uint32_t ncolours;                  // Number of colors  
-    uint32_t importantcolours;          // Important colors
+    uint16_t type;
+    uint32_t size;
+    uint16_t reserved1;
+    uint16_t reserved2;
+    uint32_t offset;
+    uint32_t header_size;
+    int32_t width_px;
+    int32_t height_px;
+    uint16_t planes;
+    uint16_t bits_per_pixel;
+    uint32_t compression;
+    uint32_t imagesize;
+    int32_t xresolution;
+    int32_t yresolution;
+    uint32_t ncolours;
+    uint32_t importantcolours;
 } BMP_Header;
 
 typedef struct __attribute__((packed)) Pixel {
@@ -56,19 +42,19 @@ typedef struct __attribute__((packed)) Pixel {
 
 typedef struct BMP_Image {
     BMP_Header header;
-    int norm_height; //normalized height
-    int bytes_per_pixel; // This amount should be equals to number of bits/8
-    Pixel ** pixels;
+    int norm_height;
+    int bytes_per_pixel;
+    Pixel **pixels;
 } BMP_Image;
 
 void printError(int error);
-BMP_Image* createBMPImage();
+BMP_Image* createBMPImage(FILE* fptr);
+BMP_Image* readImage(FILE *srcFile);
 void readImageData(FILE *srcFile, BMP_Image *dataImage, int dataSize);
-void readImage(FILE *srcFile, BMP_Image *dataImage);
 void writeImage(char* destFileName, BMP_Image* dataImage);
 void freeImage(BMP_Image* image);
 int checkBMPValid(BMP_Header* header);
 void printBMPHeader(BMP_Header* header);
 void printBMPImage(BMP_Image* image);
 
-#endif /* bmp.h */
+#endif /* _BMP_H_ */
