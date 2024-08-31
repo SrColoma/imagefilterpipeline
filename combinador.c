@@ -58,6 +58,14 @@ int main(int argc, char *argv[]) {
 
     printf("Combinador: imagenes correctamente cargadas\n");
 
+    // Verificar que los punteros a los píxeles estén correctamente inicializados
+    if (image->pixels == NULL) {
+        fprintf(stderr, "Combinador: Puntero a los píxeles es NULL\n");
+        munmap(ptr, shm_size);
+        close(shm_fd);
+        return 1;
+    }
+
     // Combinar las dos mitades de la imagen
     for (int i = 0; i < half_height; i++) {
         for (int j = 0; j < image->header.width_px; j++) {
@@ -68,6 +76,17 @@ int main(int argc, char *argv[]) {
                 close(shm_fd);
                 return 1;
             }
+            // Verificar que los punteros a las filas de píxeles estén correctamente inicializados
+            if (image->pixels[i] == NULL || image->pixels[i + half_height] == NULL) {
+                fprintf(stderr, "Combinador: Puntero a la fila de píxeles es NULL: i=%d, half_height=%d\n", i, half_height);
+                munmap(ptr, shm_size);
+                close(shm_fd);
+                return 1;
+            }
+            // Agregar mensajes de depuración para verificar los valores de los índices y los punteros
+            fprintf(stderr, "Combinador: Accediendo a píxeles: i=%d, j=%d\n", i, j);
+            fprintf(stderr, "Combinador: Punteros: pixels[%d]=%p, pixels[%d]=%p\n", i, (void*)image->pixels[i], i + half_height, (void*)image->pixels[i + half_height]);
+
             // Copiar los píxeles de la segunda mitad a la primera mitad
             image->pixels[i][j] = image->pixels[i + half_height][j];
         }
