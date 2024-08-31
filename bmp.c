@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
+
 #include "bmp.h"
 
 /* Función para imprimir mensajes de error */
@@ -110,20 +112,19 @@ BMP_Image* readImage(FILE* srcFile) {
     return image;
 }
 
-void writeImage(char* destFileName, BMP_Image* dataImage) {
-    
+bool writeImage(char* destFileName, BMP_Image* dataImage) {
     printf("Abriendo archivo de salida para escritura: %s\n", destFileName);
     FILE* destFile = fopen(destFileName, "wb");
     if (destFile == NULL) {
         printError(FILE_ERROR);
-        return;
+        return false;
     }
 
     printf("Escribiendo el encabezado BMP...\n");
     if (fwrite(&dataImage->header, sizeof(BMP_Header), 1, destFile) != 1) {
         fclose(destFile);
         printError(FILE_ERROR);
-        return;
+        return false;
     }
 
     int width = dataImage->header.width_px;
@@ -136,19 +137,20 @@ void writeImage(char* destFileName, BMP_Image* dataImage) {
         if (fwrite(dataImage->pixels[i], bytes_per_pixel, width, destFile) != width) {
             fclose(destFile);
             printError(FILE_ERROR);
-            return;
+            return false;
         }
         // Escribir el padding
         uint8_t paddingBytes[3] = {0, 0, 0};
         if (fwrite(paddingBytes, 1, padding, destFile) != padding) {
             fclose(destFile);
             printError(FILE_ERROR);
-            return;
+            return false;
         }
     }
 
     printf("Cerrando archivo de salida...\n");
     fclose(destFile);
+    return true;
 }
 
 void freeImage(BMP_Image* image) {

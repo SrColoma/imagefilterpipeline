@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define TRUE 1
 #define FALSE 0
@@ -51,7 +52,7 @@ void printError(int error);
 BMP_Image* createBMPImage(FILE* fptr);
 BMP_Image* readImage(FILE *srcFile);
 void readImageData(FILE *srcFile, BMP_Image *dataImage, int dataSize);
-void writeImage(char* destFileName, BMP_Image* dataImage);
+bool writeImage(char* destFileName, BMP_Image* dataImage);
 void freeImage(BMP_Image* image);
 int checkBMPValid(BMP_Header* header);
 void printBMPHeader(BMP_Header* header);

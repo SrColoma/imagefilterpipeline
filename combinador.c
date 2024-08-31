@@ -42,19 +42,47 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    printf("Combinador: memoria compartida mapeada\n");
+
     // Aquí se combinarían las dos porciones procesadas de la imagen
     BMP_Image *image = (BMP_Image *)ptr;
     int half_height = image->norm_height / 2;
 
+    // Verificar que la imagen esté correctamente cargada
+    if (image->header.width_px == 0 || image->norm_height == 0) {
+        fprintf(stderr, "Combinador: Error en los datos de la imagen\n");
+        munmap(ptr, shm_size);
+        close(shm_fd);
+        return 1;
+    }
+
+    printf("Combinador: imagenes correctamente cargadas\n");
+
     // Combinar las dos mitades de la imagen
     for (int i = 0; i < half_height; i++) {
         for (int j = 0; j < image->header.width_px; j++) {
+            // Verificar los índices antes de acceder a los píxeles
+            if (i + half_height >= image->norm_height) {
+                fprintf(stderr, "Combinador: Índice fuera de rango: i=%d, half_height=%d, norm_height=%d\n", i, half_height, image->norm_height);
+                munmap(ptr, shm_size);
+                close(shm_fd);
+                return 1;
+            }
+            // Copiar los píxeles de la segunda mitad a la primera mitad
             image->pixels[i][j] = image->pixels[i + half_height][j];
         }
     }
 
+    printf("Combinador: combinando\n");
+
     // Guardar la imagen combinada en output_path
-    writeImage(output_path, image);
+    printf("Combinador: guardando las imagenes\n");
+    if (!writeImage(output_path, image)) {
+        fprintf(stderr, "Combinador: Error al guardar la imagen\n");
+        munmap(ptr, shm_size);
+        close(shm_fd);
+        return 1;
+    }
 
     printf("Combinador: Imagen procesada guardada en: %s\n", output_path);
 
